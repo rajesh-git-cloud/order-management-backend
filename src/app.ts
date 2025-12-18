@@ -9,7 +9,7 @@ const app = express();
 app.use(bodyParser.json());
 
 app.use(cors({
-  origin: 'http://localhost:4200',  
+  origin: ['http://localhost:4200', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH '], 
   allowedHeaders: ['Content-Type', 'Authorization'] 
 }));

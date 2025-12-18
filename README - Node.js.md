@@ -99,3 +99,17 @@ Fields: orderId, action, actor, before, after, createdAt
 - Run migrations and generate Prisma client
 - Seed sample data (optional)
 - Run backend server: ** npm run dev **
+
+
+
+
+
+
+NOde.js RUN - nom start
+
+Prisma:
+	- npx prisma init
+	- npx prisma migrate dev
+
+Run Migration: 
+npx prisma migrate dev --name init

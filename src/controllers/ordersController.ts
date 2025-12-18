@@ -4,6 +4,19 @@ import redis from "../lib/redis";
 import { Prisma } from "@prisma/client";
 import { createOrderSchema, updateOrderSchema } from "../lib/validator";
 
+function isUniqueConstraintError(
+  err: unknown,
+  field: string
+): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    Array.isArray((err.meta as any)?.target) &&
+    (err.meta as any).target.includes(field)
+  );
+}
+
+
 async function invalidateOrderCaches() {
   if (!redis) return;
   const keys = await redis.keys("orders:*");
@@ -30,20 +43,26 @@ export async function listOrders(req: Request, res: Response) {
 
     const filters: any = {};
 
-    // Global search
+    // if (search) {
+    //   filters.OR = [
+    //     { orderNo: { contains: search, mode: "insensitive" } },
+    //     { customerName: { contains: search, mode: "insensitive" } },
+    //   ];
+    // }
+   
     if (search) {
       filters.OR = [
         { orderNo: { contains: search, mode: "insensitive" } },
         { customerName: { contains: search, mode: "insensitive" } },
-      ];
+        { status: { contains: search, mode: "insensitive" } },
+        { amount: !isNaN(Number(search)) ? { equals: Number(search) } : undefined },
+      ].filter(Boolean); 
     }
 
-    // Status filter (multi-select)
     if (statuses.length > 0) {
       filters.status = { in: statuses };
     }
 
-    // Customer filter
     if (customerName) {
       if (!filters.OR) {
         filters.customerName = { contains: customerName, mode: "insensitive" };
@@ -95,6 +114,11 @@ export async function createOrder(
     await invalidateOrderCaches();
     res.status(201).json(order);
   } catch (err) {
+    if (isUniqueConstraintError(err, "orderNo")) {
+      return res.status(409).json({
+        message: "Order number already exists",
+      });
+    }
     next(err);
   }
 }
@@ -135,6 +159,11 @@ export async function updateOrder(
     await invalidateOrderCaches();
     res.json(order);
   } catch (err) {
+    if (isUniqueConstraintError(err, "orderNo")) {
+      return res.status(409).json({
+        message: "Order number already exists",
+      });
+    }
     next(err);
   }
 }
@@ -171,3 +200,20 @@ export async function deleteOrder(
     next(err);
   }
 }
+
+export const getNextOrderNo = async (req: Request, res: Response) => {
+  try {
+    const lastOrder = await prisma.order.findFirst({
+      orderBy: { id: "desc" },
+    });
+
+    const lastNo = lastOrder?.orderNo || "ORD-1000";
+    const nextNumber = parseInt(lastNo.split("-")[1]) + 1;
+    const nextOrderNo = `ORD-${nextNumber}`;
+
+    res.json({ orderNo: nextOrderNo });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to get next order number" });
+  }
+};
